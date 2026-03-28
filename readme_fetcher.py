@@ -21,5 +21,6 @@ def fetch_readme(full_name: str) -> str:
         if encoding == "base64":
             return base64.b64decode(content.replace("\n", "")).decode("utf-8", errors="ignore")
         return content
-    except Exception:
+    except Exception as e:
+        print(f"[readme_fetcher] 抓取 {full_name} 失败: {e}")
         return ""

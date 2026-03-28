@@ -36,7 +36,11 @@ def _call_api(prompt: str) -> dict:
         timeout=30,
     )
     resp.raise_for_status()
-    text = resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    choices = data.get("choices", [])
+    if not choices:
+        raise ValueError(f"DeepSeek 返回空 choices: {data}")
+    text = choices[0]["message"]["content"]
     return _parse(text)
 
 
@@ -63,7 +67,8 @@ def generate_repo_content(name: str, description: str, language: str, readme: st
     for attempt in range(2):
         try:
             return _call_api(prompt)
-        except Exception:
+        except Exception as e:
+            print(f"[llm] 第 {attempt + 1} 次调用失败: {e}")
             if attempt == 1:
                 return {"仓库解读": "", "快速上手": ""}
     return {"仓库解读": "", "快速上手": ""}
