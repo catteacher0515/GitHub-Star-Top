@@ -6,6 +6,8 @@ from formatter import print_repos, console
 from exporter import export_json, export_csv
 from dedup import DedupState
 from feishu import FeishuClient
+from readme_fetcher import fetch_readme
+from llm import generate_repo_content
 from config import get_week_label
 
 
@@ -55,6 +57,13 @@ def main():
         table_id = feishu.get_or_create_table(week)
         today = datetime.utcnow().strftime("%Y-%m-%d")
         for repo in to_write:
+            readme = fetch_readme(repo["name"])
+            llm_content = generate_repo_content(
+                name=repo["name"],
+                description=repo["description"],
+                language=repo["language"],
+                readme=readme,
+            )
             fields = {
                 "仓库名": repo["name"],
                 "描述": repo["description"],
@@ -64,6 +73,8 @@ def main():
                 "链接": {"link": repo["url"], "text": repo["name"]},
                 "首次入榜时间": repo["first_seen"],
                 "最后更新时间": today,
+                "仓库解读": llm_content["仓库解读"],
+                "快速上手": llm_content["快速上手"],
             }
             record_id = None
             if repo["_dedup_action"] == "update":
