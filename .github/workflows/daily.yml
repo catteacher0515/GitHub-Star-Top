@@ -1,0 +1,43 @@
+name: GitHub Star Tracker
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 每天 UTC 1:00 = 北京时间 9:00
+  workflow_dispatch:        # 支持手动触发
+
+jobs:
+  fetch-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore dedup state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: dedup_state.json
+          key: dedup-state-${{ github.run_number }}
+          restore-keys: |
+            dedup-state-
+
+      - name: Run tracker
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
+        run: python main.py --top 30 --period weekly
+
+      - name: Save dedup state cache
+        uses: actions/cache/save@v4
+        with:
+          path: dedup_state.json
+          key: dedup-state-${{ github.run_number }}
