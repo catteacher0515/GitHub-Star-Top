@@ -8,6 +8,7 @@ STAR_INCREASE_THRESHOLD = 500
 
 class DedupState:
     def __init__(self):
+        self._loaded_from_file = os.path.exists(DEDUP_FILE)
         data = self._load()
         self._weekly: dict = data.get("weekly", {})
         self._first_seen: dict = data.get("first_seen", {})
@@ -51,3 +52,6 @@ class DedupState:
     def get_stars(self, url: str, week: str) -> int:
         key = f"{week}:{url}"
         return self._weekly.get(key, {}).get("stars", 0)
+
+    def is_loaded_from_file(self) -> bool:
+        return self._loaded_from_file

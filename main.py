@@ -77,7 +77,7 @@ def main():
                 "快速上手": llm_content["快速上手"],
             }
             record_id = None
-            if repo["_dedup_action"] == "update":
+            if repo["_dedup_action"] == "update" and dedup.is_loaded_from_file():
                 record_id = feishu.find_record_id(table_id, repo["url"])
             feishu.upsert_record(table_id, fields, record_id=record_id)
         console.print(f"[green]已写入飞书表格 {week}，共 {len(to_write)} 条[/green]")

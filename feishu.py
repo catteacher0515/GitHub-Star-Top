@@ -97,7 +97,7 @@ class FeishuClient:
             f"{FEISHU_API_BASE}/bitable/v1/apps/{self.bitable_app_token}/tables/{table_id}/records",
             headers=self._headers(token),
             params={"filter": f'CurrentValue.[链接].link = "{repo_url}"', "page_size": 1},
-            timeout=10,
+            timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
