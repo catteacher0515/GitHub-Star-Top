@@ -68,6 +68,26 @@ class FeishuClient:
             raise RuntimeError(f"飞书创建数据表失败: {data}")
         return data["data"]["table_id"]
 
+    def ensure_fields(self, table_id: str, field_names: list[str]):
+        """检查表字段，缺少的自动添加（文本类型）"""
+        token = self._get_access_token()
+        resp = requests.get(
+            f"{FEISHU_API_BASE}/bitable/v1/apps/{self.bitable_app_token}/tables/{table_id}/fields",
+            headers=self._headers(token),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        existing = {f["field_name"] for f in resp.json().get("data", {}).get("items", [])}
+        for name in field_names:
+            if name not in existing:
+                requests.post(
+                    f"{FEISHU_API_BASE}/bitable/v1/apps/{self.bitable_app_token}/tables/{table_id}/fields",
+                    headers=self._headers(token),
+                    json={"field_name": name, "type": 1},
+                    timeout=10,
+                ).raise_for_status()
+                print(f"[feishu] 已补充字段: {name}")
+
     def upsert_record(self, table_id: str, fields: dict, record_id: str = None):
         """新增或更新一条记录"""
         token = self._get_access_token()

@@ -55,6 +55,7 @@ def main():
     if not args.dry_run and to_write:
         feishu = FeishuClient()
         table_id = feishu.get_or_create_table(week)
+        feishu.ensure_fields(table_id, ["仓库解读", "快速上手"])
         today = datetime.utcnow().strftime("%Y-%m-%d")
         for repo in to_write:
             readme = fetch_readme(repo["name"])
