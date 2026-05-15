@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from llm import generate_repo_content
+from llm import generate_repo_content, format_for_feishu_cell
 
 
 def _mock_resp(content: str):
@@ -50,3 +50,29 @@ def test_generate_returns_empty_on_double_failure():
             readme="",
         )
     assert result == {"仓库解读": "", "快速上手": ""}
+
+
+def test_generate_formats_quick_start_for_feishu_readability():
+    mock_content = """【仓库解读】
+这是一个很棒的工具。
+【快速上手】
+**① 核心功能**
+- 支持批量处理
+- 支持自动导出
+**② 上手步骤**
+1. 安装依赖
+2. 运行命令
+"""
+    with patch("llm.requests.post", return_value=_mock_resp(mock_content)):
+        result = generate_repo_content(
+            name="owner/repo",
+            description="A cool tool",
+            language="Python",
+            readme="# Hello\nThis is a tool.",
+        )
+    assert result["快速上手"] == "① 核心功能\n- 支持批量处理\n- 支持自动导出\n\n② 上手步骤\n1. 安装依赖\n2. 运行命令"
+
+
+def test_format_for_feishu_cell_splits_dense_paragraphs():
+    text = "第一句。第二句。第三句。"
+    assert format_for_feishu_cell(text) == "第一句。\n第二句。\n第三句。"

@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--lang", type=str, default=None, help="按编程语言筛选")
     parser.add_argument("--export", choices=["json", "csv"], default=None, help="同时导出本地文件")
     parser.add_argument("--dry-run", action="store_true", help="只抓取和去重，不写入飞书")
+    parser.add_argument("--force-write", action="store_true", help="忽略去重，强制写入飞书，便于本地验证内容展示")
     parser.add_argument("--token", type=str, default=None, help="GitHub Token（优先级高于 .env）")
     args = parser.parse_args()
 
@@ -41,6 +42,13 @@ def main():
     to_write = []
 
     for repo in repos:
+        if args.force_write:
+            repo["_dedup_action"] = "force_write"
+            repo["_star_increase"] = 0
+            repo["first_seen"] = dedup.get_first_seen(repo["url"])
+            to_write.append(repo)
+            continue
+
         old_stars = dedup.get_stars(repo["url"], week)
         action = dedup.check_and_update(repo["url"], repo["stars"], week)
         if action == "skip":
