@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from feishu import FeishuClient
+import requests
 
 
 @pytest.fixture
@@ -56,3 +57,19 @@ def test_upsert_record_update(client):
                 "仓库名": "owner/repo",
                 "Stars": 1500,
             }, record_id="rec123")
+
+
+def test_get_or_create_table_raises_runtime_error_with_response_body(client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 400
+    mock_resp.ok = False
+    mock_resp.text = '{"code":1254040,"msg":"invalid app token"}'
+    mock_resp.json.return_value = {"code": 1254040, "msg": "invalid app token"}
+
+    with patch.object(client, "_get_access_token", return_value="t-abc"):
+        with patch("feishu.requests.get", return_value=mock_resp):
+            with pytest.raises(RuntimeError) as exc:
+                client.get_or_create_table("2026-W20")
+
+    assert "获取数据表列表失败" in str(exc.value)
+    assert "invalid app token" in str(exc.value)

@@ -30,6 +30,14 @@ class FeishuClient:
     def _headers(self, token: str) -> dict:
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+    @staticmethod
+    def _raise_with_response(prefix: str, resp):
+        try:
+            detail = resp.json()
+        except Exception:
+            detail = resp.text
+        raise RuntimeError(f"{prefix}: status={resp.status_code}, detail={detail}")
+
     def get_or_create_table(self, week_label: str) -> str:
         """获取或创建当周数据表，返回 table_id"""
         token = self._get_access_token()
@@ -38,7 +46,8 @@ class FeishuClient:
             headers=self._headers(token),
             timeout=10,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            self._raise_with_response("获取数据表列表失败", resp)
         items = resp.json().get("data", {}).get("items", [])
         for item in items:
             if item["name"] == week_label:
@@ -63,7 +72,8 @@ class FeishuClient:
             ]}},
             timeout=10,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            self._raise_with_response("飞书创建数据表失败", resp)
         data = resp.json()
         if data.get("code") != 0:
             raise RuntimeError(f"飞书创建数据表失败: {data}")

@@ -1,12 +1,54 @@
 import requests
 from config import GITHUB_TOKEN, GITHUB_API_BASE, get_since_date
 
+EXCLUDED_REPO_KEYWORDS = (
+    "aimbot",
+    "triggerbot",
+    "wallhack",
+    "esp",
+    "mod menu",
+    "mod-menu",
+    "cheat",
+    "cheats",
+    "bypass",
+    "hwid spoofer",
+    "spoofer",
+    "injector",
+    "dll injector",
+)
+
+EXCLUDED_GAME_KEYWORDS = (
+    "gta",
+    "cs2",
+    "csgo",
+    "valorant",
+    "fortnite",
+    "roblox",
+    "apex",
+    "pubg",
+    "warzone",
+    "minecraft",
+)
+
 
 def _headers():
     h = {"Accept": "application/vnd.github+json"}
     if GITHUB_TOKEN:
         h["Authorization"] = f"Bearer {GITHUB_TOKEN}"
     return h
+
+
+def should_exclude_repo(repo: dict) -> bool:
+    """保守过滤明显的游戏外挂/作弊工具，避免误杀创意工具类项目。"""
+    haystack = " ".join([
+        repo.get("full_name", ""),
+        repo.get("name", ""),
+        repo.get("description") or "",
+    ]).lower()
+
+    has_game_signal = any(keyword in haystack for keyword in EXCLUDED_GAME_KEYWORDS)
+    has_cheat_signal = any(keyword in haystack for keyword in EXCLUDED_REPO_KEYWORDS)
+    return has_game_signal and has_cheat_signal
 
 
 def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> list[dict]:
@@ -17,7 +59,7 @@ def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> 
 
     repos = []
     page = 1
-    per_page = min(top, 100)
+    per_page = min(max(top * 2, 30), 100)
 
     while len(repos) < top:
         params = {
@@ -40,11 +82,17 @@ def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> 
         if not items:
             break
 
-        repos.extend(items)
+        for item in items:
+            if should_exclude_repo(item):
+                continue
+            repos.append(item)
+            if len(repos) >= top:
+                break
+
         if len(items) < per_page:
             break
         page += 1
-        per_page = min(top - len(repos), 100)
+        per_page = min(max(top - len(repos), 30), 100)
 
     return [_parse(i + 1, r) for i, r in enumerate(repos[:top])]
 
