@@ -6,15 +6,21 @@ EXCLUDED_REPO_KEYWORDS = (
     "triggerbot",
     "wallhack",
     "esp",
+    "external overlay",
+    "helper overlay",
     "mod menu",
     "mod-menu",
     "cheat",
     "cheats",
+    "hack",
+    "hacks",
     "bypass",
     "hwid spoofer",
     "spoofer",
     "injector",
     "dll injector",
+    "executor",
+    "script executor",
 )
 
 EXCLUDED_GAME_KEYWORDS = (
@@ -28,6 +34,8 @@ EXCLUDED_GAME_KEYWORDS = (
     "pubg",
     "warzone",
     "minecraft",
+    "blooket",
+    "prodigy",
 )
 
 
@@ -38,26 +46,33 @@ def _headers():
     return h
 
 
-def should_exclude_repo(repo: dict) -> bool:
-    """保守过滤明显的游戏外挂/作弊工具，避免误杀创意工具类项目。"""
+def get_exclude_reason(repo: dict) -> str | None:
     haystack = " ".join([
         repo.get("full_name", ""),
         repo.get("name", ""),
         repo.get("description") or "",
     ]).lower()
 
-    has_game_signal = any(keyword in haystack for keyword in EXCLUDED_GAME_KEYWORDS)
-    has_cheat_signal = any(keyword in haystack for keyword in EXCLUDED_REPO_KEYWORDS)
-    return has_game_signal and has_cheat_signal
+    matched_game = next((keyword for keyword in EXCLUDED_GAME_KEYWORDS if keyword in haystack), None)
+    matched_cheat = next((keyword for keyword in EXCLUDED_REPO_KEYWORDS if keyword in haystack), None)
+    if matched_game and matched_cheat:
+        return f"命中过滤：游戏相关词={matched_game}；外挂/作弊词={matched_cheat}"
+    return None
 
 
-def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> list[dict]:
+def should_exclude_repo(repo: dict) -> bool:
+    """保守过滤明显的游戏外挂/作弊工具，避免误杀创意工具类项目。"""
+    return get_exclude_reason(repo) is not None
+
+
+def fetch_top_repos_with_debug(top: int = 25, period: str = "weekly", lang: str = None) -> tuple[list[dict], list[dict]]:
     since = get_since_date(period)
     query = f"created:>{since}"
     if lang:
         query += f" language:{lang}"
 
     repos = []
+    excluded = []
     page = 1
     per_page = min(max(top * 2, 30), 100)
 
@@ -83,7 +98,12 @@ def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> 
             break
 
         for item in items:
-            if should_exclude_repo(item):
+            reason = get_exclude_reason(item)
+            if reason:
+                excluded.append({
+                    "name": item["full_name"],
+                    "reason": reason,
+                })
                 continue
             repos.append(item)
             if len(repos) >= top:
@@ -94,7 +114,12 @@ def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> 
         page += 1
         per_page = min(max(top - len(repos), 30), 100)
 
-    return [_parse(i + 1, r) for i, r in enumerate(repos[:top])]
+    return [_parse(i + 1, r) for i, r in enumerate(repos[:top])], excluded
+
+
+def fetch_top_repos(top: int = 25, period: str = "weekly", lang: str = None) -> list[dict]:
+    repos, _ = fetch_top_repos_with_debug(top=top, period=period, lang=lang)
+    return repos
 
 
 def _parse(rank: int, r: dict) -> dict:

@@ -1,7 +1,7 @@
 import argparse
 import sys
 from datetime import datetime
-from fetcher import fetch_top_repos
+from fetcher import fetch_top_repos, fetch_top_repos_with_debug
 from formatter import print_repos, console
 from exporter import export_json, export_csv
 from dedup import DedupState
@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--export", choices=["json", "csv"], default=None, help="同时导出本地文件")
     parser.add_argument("--dry-run", action="store_true", help="只抓取和去重，不写入飞书")
     parser.add_argument("--force-write", action="store_true", help="忽略去重，强制写入飞书，便于本地验证内容展示")
+    parser.add_argument("--debug-filter", action="store_true", help="输出抓取过滤明细，便于本地调试筛选规则")
     parser.add_argument("--token", type=str, default=None, help="GitHub Token（优先级高于 .env）")
     args = parser.parse_args()
 
@@ -30,12 +31,22 @@ def main():
     console.print(f"[bold]正在抓取 GitHub 热门仓库...[/bold] period=[cyan]{args.period}[/cyan] top=[cyan]{args.top}[/cyan]")
 
     try:
-        repos = fetch_top_repos(top=args.top, period=args.period, lang=args.lang)
+        if args.debug_filter:
+            repos, excluded = fetch_top_repos_with_debug(top=args.top, period=args.period, lang=args.lang)
+        else:
+            repos = fetch_top_repos(top=args.top, period=args.period, lang=args.lang)
+            excluded = []
     except RuntimeError as e:
         console.print(f"[red]错误：{e}[/red]")
         sys.exit(1)
 
     print_repos(repos, period=args.period, lang=args.lang)
+    if args.debug_filter:
+        console.print(f"[dim]过滤掉：{len(excluded)} 条[/dim]")
+        if excluded:
+            console.print("[bold yellow]过滤明细[/bold yellow]")
+            for item in excluded:
+                console.print(f"- {item['name']} [dim]({item['reason']})[/dim]")
 
     week = get_week_label()
     dedup = DedupState()
