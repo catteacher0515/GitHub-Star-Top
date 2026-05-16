@@ -59,6 +59,7 @@ class FeishuClient:
                 {"field_name": "最后更新时间", "type": 1},
                 {"field_name": "仓库解读", "type": 1},
                 {"field_name": "快速上手", "type": 1},
+                {"field_name": "推荐初稿", "type": 1},
             ]}},
             timeout=10,
         )

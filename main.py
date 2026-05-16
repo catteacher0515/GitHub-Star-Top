@@ -63,7 +63,7 @@ def main():
     if not args.dry_run and to_write:
         feishu = FeishuClient()
         table_id = feishu.get_or_create_table(week)
-        feishu.ensure_fields(table_id, ["仓库解读", "快速上手"])
+        feishu.ensure_fields(table_id, ["仓库解读", "快速上手", "推荐初稿"])
         today = datetime.utcnow().strftime("%Y-%m-%d")
         for repo in to_write:
             readme = fetch_readme(repo["name"])
@@ -72,6 +72,9 @@ def main():
                 description=repo["description"],
                 language=repo["language"],
                 readme=readme,
+                stars=repo["stars"],
+                forks=repo["forks"],
+                created_at=repo["created_at"][:10],
             )
             fields = {
                 "仓库名": repo["name"],
@@ -84,6 +87,7 @@ def main():
                 "最后更新时间": today,
                 "仓库解读": llm_content["仓库解读"],
                 "快速上手": llm_content["快速上手"],
+                "推荐初稿": llm_content["推荐初稿"],
             }
             record_id = None
             if repo["_dedup_action"] == "update" and dedup.is_loaded_from_file():
