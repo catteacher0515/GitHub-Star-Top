@@ -1,5 +1,11 @@
+import re
+import time
+
 import requests
 from config import GITHUB_TOKEN, GITHUB_API_BASE, get_since_date
+
+MAX_REQUEST_RETRIES = 3
+RETRY_DELAY_SECONDS = 2
 
 EXCLUDED_REPO_KEYWORDS = (
     "aimbot",
@@ -7,6 +13,7 @@ EXCLUDED_REPO_KEYWORDS = (
     "wallhack",
     "esp",
     "external overlay",
+    "external-overlay",
     "helper overlay",
     "mod menu",
     "mod-menu",
@@ -14,6 +21,10 @@ EXCLUDED_REPO_KEYWORDS = (
     "cheats",
     "hack",
     "hacks",
+    "autoclicker",
+    "auto clicker",
+    "auto-clicker",
+    "macro",
     "bypass",
     "hwid spoofer",
     "spoofer",
@@ -21,6 +32,16 @@ EXCLUDED_REPO_KEYWORDS = (
     "dll injector",
     "executor",
     "script executor",
+)
+
+EXCLUDED_HIGH_RISK_PATTERNS = (
+    ("hwid", re.compile(r"(?<![a-z0-9])hwid(?![a-z0-9])")),
+    ("anti-cheat", re.compile(r"(?<![a-z0-9])anti-cheat(?![a-z0-9])")),
+    ("anticheat", re.compile(r"(?<![a-z0-9])anticheat(?![a-z0-9])")),
+    ("vanguard", re.compile(r"(?<![a-z0-9])vanguard(?![a-z0-9])")),
+    ("battleye", re.compile(r"(?<![a-z0-9])battleye(?![a-z0-9])")),
+    ("battl eye", re.compile(r"(?<![a-z0-9])battl eye(?![a-z0-9])")),
+    ("eac", re.compile(r"(?<![a-z0-9])eac(?![a-z0-9])")),
 )
 
 EXCLUDED_GAME_KEYWORDS = (
@@ -46,12 +67,39 @@ def _headers():
     return h
 
 
+def _github_get(path: str, *, params: dict) -> requests.Response:
+    url = f"{GITHUB_API_BASE}{path}"
+    last_error = None
+
+    for attempt in range(MAX_REQUEST_RETRIES + 1):
+        try:
+            return requests.get(url, headers=_headers(), params=params, timeout=15)
+        except (
+            requests.exceptions.SSLError,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as exc:
+            last_error = exc
+            if attempt >= MAX_REQUEST_RETRIES:
+                break
+            time.sleep(RETRY_DELAY_SECONDS)
+
+    raise RuntimeError(f"GitHub API 请求失败，已重试 {MAX_REQUEST_RETRIES} 次：{last_error}")
+
+
 def get_exclude_reason(repo: dict) -> str | None:
     haystack = " ".join([
         repo.get("full_name", ""),
         repo.get("name", ""),
         repo.get("description") or "",
     ]).lower()
+
+    matched_high_risk = next(
+        (label for label, pattern in EXCLUDED_HIGH_RISK_PATTERNS if pattern.search(haystack)),
+        None,
+    )
+    if matched_high_risk:
+        return f"命中过滤：高风险词={matched_high_risk}"
 
     matched_game = next((keyword for keyword in EXCLUDED_GAME_KEYWORDS if keyword in haystack), None)
     matched_cheat = next((keyword for keyword in EXCLUDED_REPO_KEYWORDS if keyword in haystack), None)
@@ -84,7 +132,7 @@ def fetch_top_repos_with_debug(top: int = 25, period: str = "weekly", lang: str 
             "per_page": per_page,
             "page": page,
         }
-        resp = requests.get(f"{GITHUB_API_BASE}/search/repositories", headers=_headers(), params=params, timeout=15)
+        resp = _github_get("/search/repositories", params=params)
 
         if resp.status_code == 403:
             remaining = resp.headers.get("X-RateLimit-Remaining", "0")

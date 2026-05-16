@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
 from fetcher import fetch_top_repos, should_exclude_repo, get_exclude_reason, fetch_top_repos_with_debug
 
 
@@ -37,6 +39,31 @@ def test_should_exclude_repo_for_executor_or_hacks_style_projects():
     assert should_exclude_repo(executor) is True
     assert should_exclude_repo(hacks) is True
     assert should_exclude_repo(overlay) is True
+
+
+def test_should_exclude_repo_for_hyphenated_overlay_and_autoclicker_variants():
+    overlay = _repo("patchfighterway90/cs2-external-overlay", "Custom overlay utility for gamers")
+    autoclicker = _repo("jiaoyanming0-bot/OPAutoClicker", "Auto clicker with Roblox AFK and Minecraft support")
+    macro = _repo("someone/valorant-macro-kit", "Macro helper for Valorant players")
+    assert should_exclude_repo(overlay) is True
+    assert should_exclude_repo(autoclicker) is True
+    assert should_exclude_repo(macro) is True
+
+
+def test_should_exclude_repo_for_high_risk_standalone_keywords_without_game_name():
+    hwid = _repo("manojmidhul92-art/Umbrella-HWID", "Advanced HWID changer with anti-cheat bypass support")
+    vanguard = _repo("someone/kernel-bypass-tool", "Bypass Vanguard and BattlEye protections")
+    eac = _repo("someone/eac-spoofer", "Spoofer for EAC protected environments")
+    assert should_exclude_repo(hwid) is True
+    assert should_exclude_repo(vanguard) is True
+    assert should_exclude_repo(eac) is True
+
+
+def test_should_keep_react_or_reaction_text_when_not_high_risk_repo():
+    react_repo = _repo("cclank/cell-architecture-studio", "Interactive 3D cell architecture gallery built with React and Three.js")
+    reaction_repo = _repo("lucasfrre/BongoCat-Desktop", "Live reaction desktop pet with OBS support")
+    assert should_exclude_repo(react_repo) is False
+    assert should_exclude_repo(reaction_repo) is False
 
 
 def test_should_keep_creative_or_desktop_pet_projects():
@@ -143,3 +170,33 @@ def test_fetch_top_repos_with_debug_returns_excluded_details():
         "reason": "命中过滤：游戏相关词=gta；外挂/作弊词=mod menu",
     }
     assert len(excluded) == 29
+
+
+def test_fetch_top_repos_retries_after_ssl_error_and_succeeds():
+    page1 = [
+        _repo("good/creative-tool", "Useful AI design tool", stars=2900),
+    ]
+
+    with patch(
+        "fetcher.requests.get",
+        side_effect=[requests.exceptions.SSLError("ssl eof"), _mock_search_response(page1)],
+    ) as mock_get:
+        with patch("fetcher.time.sleep") as mock_sleep:
+            repos = fetch_top_repos(top=1, period="weekly")
+
+    assert [repo["name"] for repo in repos] == ["good/creative-tool"]
+    assert mock_get.call_count == 2
+    mock_sleep.assert_called_once()
+
+
+def test_fetch_top_repos_raises_runtime_error_after_retry_exhausted():
+    with patch(
+        "fetcher.requests.get",
+        side_effect=requests.exceptions.SSLError("ssl eof"),
+    ):
+        with patch("fetcher.time.sleep"):
+            with pytest.raises(RuntimeError) as exc:
+                fetch_top_repos(top=1, period="weekly")
+
+    assert "GitHub API 请求失败" in str(exc.value)
+    assert "已重试 3 次" in str(exc.value)
