@@ -29,6 +29,7 @@ def test_force_write_bypasses_dedup_and_writes_records():
                             main.main()
 
     dedup.check_and_update.assert_not_called()
+    feishu.ensure_fields.assert_called_once_with("tbl123", ["仓库解读", "快速上手", "推荐初稿", "入池状态", "选题池记录"])
     feishu.upsert_record.assert_called_once()
     fields = feishu.upsert_record.call_args.args[1]
     assert fields["推荐初稿"] == "推荐初稿内容"

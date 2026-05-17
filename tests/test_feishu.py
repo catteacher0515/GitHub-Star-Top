@@ -35,6 +35,48 @@ def test_get_or_create_table_existing(client):
     assert table_id == "tbl123"
 
 
+def test_get_or_create_table_creates_table_with_expected_fields(client):
+    list_resp = MagicMock()
+    list_resp.ok = True
+    list_resp.json.return_value = {"code": 0, "data": {"items": []}}
+
+    create_resp = MagicMock()
+    create_resp.ok = True
+    create_resp.json.return_value = {"code": 0, "data": {"table_id": "tbl-new"}}
+
+    with patch.object(client, "_get_access_token", return_value="t-abc"):
+        with patch("feishu.requests.get", return_value=list_resp):
+            with patch("feishu.requests.post", return_value=create_resp) as mock_post:
+                table_id = client.get_or_create_table("2026-W21")
+
+    assert table_id == "tbl-new"
+    payload = mock_post.call_args.kwargs["json"]
+    field_names = [field["field_name"] for field in payload["table"]["fields"]]
+    assert "推荐初稿" in field_names
+    assert "入池状态" in field_names
+    assert "选题池记录" in field_names
+
+
+def test_ensure_fields_adds_missing_pool_fields(client):
+    fields_resp = MagicMock()
+    fields_resp.json.return_value = {
+        "code": 0,
+        "data": {"items": [{"field_name": "仓库解读"}, {"field_name": "快速上手"}]},
+    }
+    fields_resp.raise_for_status = MagicMock()
+
+    create_field_resp = MagicMock()
+    create_field_resp.raise_for_status = MagicMock()
+
+    with patch.object(client, "_get_access_token", return_value="t-abc"):
+        with patch("feishu.requests.get", return_value=fields_resp):
+            with patch("feishu.requests.post", return_value=create_field_resp) as mock_post:
+                client.ensure_fields("tbl123", ["仓库解读", "快速上手", "推荐初稿", "入池状态", "选题池记录"])
+
+    posted_field_names = [call.kwargs["json"]["field_name"] for call in mock_post.call_args_list]
+    assert posted_field_names == ["推荐初稿", "入池状态", "选题池记录"]
+
+
 def test_upsert_record_new(client):
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"code": 0, "data": {"record": {"record_id": "rec123"}}}
