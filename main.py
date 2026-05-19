@@ -100,6 +100,8 @@ def main():
                 "快速上手": llm_content["快速上手"],
                 "推荐初稿": llm_content["推荐初稿"],
             }
+            if repo["_dedup_action"] in {"new", "force_write"}:
+                fields["入池状态"] = "未处理"
             record_id = None
             if repo["_dedup_action"] == "update" and dedup.is_loaded_from_file():
                 record_id = feishu.find_record_id(table_id, repo["url"])

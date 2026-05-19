@@ -77,6 +77,22 @@ def test_ensure_fields_adds_missing_pool_fields(client):
     assert posted_field_names == ["推荐初稿", "入池状态", "选题池记录"]
 
 
+def test_upsert_record_uses_new_status_field_for_new_records(client):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"code": 0, "data": {"record": {"record_id": "rec123"}}}
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch.object(client, "_get_access_token", return_value="t-abc"):
+        with patch("feishu.requests.post", return_value=mock_resp) as mock_post:
+            client.upsert_record("tbl123", {
+                "仓库名": "owner/repo",
+                "Stars": 1000,
+                "入池状态": "未处理",
+            }, record_id=None)
+
+    assert mock_post.call_args.kwargs["json"]["fields"]["入池状态"] == "未处理"
+
+
 def test_upsert_record_new(client):
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"code": 0, "data": {"record": {"record_id": "rec123"}}}
