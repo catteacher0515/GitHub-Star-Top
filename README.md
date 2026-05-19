@@ -107,6 +107,27 @@ pip install pytest
 pytest tests/ -v
 ```
 
+## 飞书选题池同步
+
+仓库内置了配套的飞书 CLI 脚本，位置在 `tools/feishu-cli/`。
+
+```bash
+# 预演同步，不实际写入
+node tools/feishu-cli/scripts/sync_github_star_top_to_topic_pool.js --dry-run
+
+# 正式同步所有周表中“待加入选题池”的记录
+node tools/feishu-cli/scripts/sync_github_star_top_to_topic_pool.js
+
+# 启动飞书机器人监听，收到“同步待加入选题池”后自动执行
+node tools/feishu-cli/scripts/run_topic_pool_sync_bot.js
+```
+
+相关 Node 测试：
+
+```bash
+node --test tools/feishu-cli/scripts/*.test.js
+```
+
 ## License
 
 MIT
