@@ -2,6 +2,32 @@ import time
 import requests
 from config import FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_BITABLE_APP_TOKEN, FEISHU_API_BASE
 
+STATUS_FIELD_OPTIONS = [
+    {"name": "未处理", "hue": "Gray", "lightness": "Lighter"},
+    {"name": "待加入选题池", "hue": "Orange", "lightness": "Light"},
+    {"name": "已加入", "hue": "Green", "lightness": "Light"},
+    {"name": "重复待确认", "hue": "Purple", "lightness": "Light"},
+]
+
+STATUS_FIELD_DEF = {
+    "field_name": "入池状态",
+    "type": 3,
+    "property": {
+        "multiple": False,
+        "options": STATUS_FIELD_OPTIONS,
+    },
+}
+
+def _pool_status_field_def():
+    return {
+        "field_name": STATUS_FIELD_DEF["field_name"],
+        "type": STATUS_FIELD_DEF["type"],
+        "property": {
+            "multiple": STATUS_FIELD_DEF["property"]["multiple"],
+            "options": [dict(option) for option in STATUS_FIELD_DEF["property"]["options"]],
+        },
+    }
+
 
 class FeishuClient:
     def __init__(self, app_id=None, app_secret=None, bitable_app_token=None):
@@ -69,7 +95,7 @@ class FeishuClient:
                 {"field_name": "仓库解读", "type": 1},
                 {"field_name": "快速上手", "type": 1},
                 {"field_name": "推荐初稿", "type": 1},
-                {"field_name": "入池状态", "type": 1},
+                _pool_status_field_def(),
                 {"field_name": "选题池记录", "type": 1},
             ]}},
             timeout=10,
@@ -93,10 +119,11 @@ class FeishuClient:
         existing = {f["field_name"] for f in resp.json().get("data", {}).get("items", [])}
         for name in field_names:
             if name not in existing:
+                field_def = _pool_status_field_def() if name == "入池状态" else {"field_name": name, "type": 1}
                 requests.post(
                     f"{FEISHU_API_BASE}/bitable/v1/apps/{self.bitable_app_token}/tables/{table_id}/fields",
                     headers=self._headers(token),
-                    json={"field_name": name, "type": 1},
+                    json=field_def,
                     timeout=10,
                 ).raise_for_status()
                 print(f"[feishu] 已补充字段: {name}")

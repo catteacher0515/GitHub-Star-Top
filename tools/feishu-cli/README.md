@@ -43,10 +43,24 @@ node tools/feishu-cli/scripts/sync_github_star_top_to_topic_pool.js --dry-run
 
 ## 飞书消息触发
 
-启动监听机器人：
+临时启动监听机器人：
 
 ```bash
 node tools/feishu-cli/scripts/run_topic_pool_sync_bot.js
+```
+
+安装为 macOS 常驻服务：
+
+```bash
+chmod +x tools/feishu-cli/scripts/install_topic_pool_sync_bot_service.sh
+tools/feishu-cli/scripts/install_topic_pool_sync_bot_service.sh
+```
+
+卸载常驻服务：
+
+```bash
+chmod +x tools/feishu-cli/scripts/uninstall_topic_pool_sync_bot_service.sh
+tools/feishu-cli/scripts/uninstall_topic_pool_sync_bot_service.sh
 ```
 
 触发方式：
