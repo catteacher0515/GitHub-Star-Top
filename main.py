@@ -14,6 +14,7 @@ from config import get_week_label
 def main():
     parser = argparse.ArgumentParser(description="抓取 GitHub 热门仓库并写入飞书")
     parser.add_argument("--top", type=int, default=30, help="抓取前 N 个仓库（默认 30）")
+    parser.add_argument("--min-new", type=int, default=20, help="至少写入多少条历史未记录仓库（默认 20）")
     parser.add_argument("--period", choices=["today", "weekly", "monthly"], default="weekly")
     parser.add_argument("--lang", type=str, default=None, help="按编程语言筛选")
     parser.add_argument("--export", choices=["json", "csv"], default=None, help="同时导出本地文件")
@@ -51,25 +52,81 @@ def main():
     week = get_week_label()
     dedup = DedupState()
     to_write = []
+    new_unseen_count = 0
 
+    def _prepare_repo(repo: dict, action: str) -> dict:
+        prepared = dict(repo)
+        prepared["_dedup_action"] = action
+        prepared["first_seen"] = dedup.get_first_seen(prepared["url"])
+        if action == "new":
+            prepared["_star_increase"] = 0
+        elif action == "force_write":
+            prepared["_star_increase"] = 0
+        else:
+            prepared["_star_increase"] = repo["stars"] - dedup.get_stars(prepared["url"], week)
+        return prepared
+
+    seen_urls = set()
     for repo in repos:
+        seen_urls.add(repo["url"])
         if args.force_write:
-            repo["_dedup_action"] = "force_write"
-            repo["_star_increase"] = 0
-            repo["first_seen"] = dedup.get_first_seen(repo["url"])
-            to_write.append(repo)
+            to_write.append(_prepare_repo(repo, "force_write"))
             continue
-
-        old_stars = dedup.get_stars(repo["url"], week)
         action = dedup.check_and_update(repo["url"], repo["stars"], week)
         if action == "skip":
             continue
-        repo["_dedup_action"] = action
-        repo["_star_increase"] = 0 if action == "new" else (repo["stars"] - old_stars)
-        repo["first_seen"] = dedup.get_first_seen(repo["url"])
-        to_write.append(repo)
+        if action == "new" and not dedup.has_seen(repo["url"]):
+            to_write.append(_prepare_repo(repo, action))
+            new_unseen_count += 1
+        elif action == "update":
+            to_write.append(_prepare_repo(repo, action))
 
-    console.print(f"[dim]去重后待写入：{len(to_write)} 条（跳过 {len(repos) - len(to_write)} 条）[/dim]")
+    initial_to_write_count = len(to_write)
+    if not args.force_write and args.min_new > 0 and new_unseen_count < args.min_new:
+        console.print(
+            f"[yellow]当前只找到 {new_unseen_count} 条历史未记录仓库，开始补足到 {args.min_new} 条[/yellow]"
+        )
+        refill_size = max(args.top, args.min_new)
+        refill_limit = refill_size
+        max_refill_limit = max(refill_size * 4, args.min_new * 4)
+        while new_unseen_count < args.min_new and refill_limit <= max_refill_limit:
+            try:
+                if args.debug_filter:
+                    refill_repos, refill_excluded = fetch_top_repos_with_debug(
+                        top=refill_limit, period=args.period, lang=args.lang
+                    )
+                else:
+                    refill_repos = fetch_top_repos(top=refill_limit, period=args.period, lang=args.lang)
+                    refill_excluded = []
+            except RuntimeError as e:
+                console.print(f"[red]错误：{e}[/red]")
+                sys.exit(1)
+
+            for repo in refill_repos:
+                if repo["url"] in seen_urls:
+                    continue
+                seen_urls.add(repo["url"])
+                action = dedup.preview_action(repo["url"], repo["stars"], week)
+                if action != "new" or dedup.has_seen(repo["url"]):
+                    continue
+                dedup.check_and_update(repo["url"], repo["stars"], week)
+                to_write.append(_prepare_repo(repo, action))
+                new_unseen_count += 1
+                if new_unseen_count >= args.min_new:
+                    break
+
+            if new_unseen_count >= args.min_new:
+                break
+            refill_limit += refill_size
+
+    console.print(
+        f"[dim]去重后待写入：{len(to_write)} 条（初始跳过 {len(repos) - initial_to_write_count} 条）[/dim]"
+    )
+
+    if new_unseen_count < args.min_new and not args.force_write:
+        console.print(
+            f"[yellow]本轮仍不足 {args.min_new} 条历史未记录仓库，最终写入 {new_unseen_count} 条[/yellow]"
+        )
 
     if not args.dry_run and to_write:
         feishu = FeishuClient()

@@ -87,6 +87,29 @@ class DedupState:
     def get_first_seen(self, url: str) -> str:
         return self._first_seen.get(url, datetime.utcnow().strftime("%Y-%m-%d"))
 
+    def has_seen(self, url: str) -> bool:
+        return url in self._first_seen
+
+    def preview_action(self, url: str, stars: int, week: str) -> str:
+        """
+        只读版本的状态判断，不修改内部状态。
+        返回值与 check_and_update 一致：
+          "new" / "update" / "skip"
+        """
+        key = f"{week}:{url}"
+        existing = self._weekly.get(key)
+
+        if existing is None:
+            if self._is_in_cooldown(url, week):
+                return "skip"
+            return "new"
+
+        increase = stars - existing["stars"]
+        if increase >= STAR_INCREASE_THRESHOLD:
+            return "update"
+
+        return "skip"
+
     def get_stars(self, url: str, week: str) -> int:
         key = f"{week}:{url}"
         return self._weekly.get(key, {}).get("stars", 0)

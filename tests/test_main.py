@@ -96,3 +96,100 @@ def test_debug_filter_prints_excluded_reasons():
     assert "过滤明细" in rendered
     assert "bad/gta-mod-menu" in rendered
     assert "game=gta, cheat=mod menu" in rendered
+
+
+def test_min_new_target_fills_from_unseen_backlog():
+    first_batch = [
+        {
+            "rank": 1,
+            "name": "owner/seen-1",
+            "description": "desc",
+            "stars": 123,
+            "forks": 45,
+            "language": "Python",
+            "url": "https://github.com/owner/seen-1",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+        {
+            "rank": 2,
+            "name": "owner/seen-2",
+            "description": "desc",
+            "stars": 122,
+            "forks": 44,
+            "language": "Python",
+            "url": "https://github.com/owner/seen-2",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+    ]
+    second_batch = [
+        {
+            "rank": 1,
+            "name": "owner/seen-1",
+            "description": "desc",
+            "stars": 123,
+            "forks": 45,
+            "language": "Python",
+            "url": "https://github.com/owner/seen-1",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+        {
+            "rank": 2,
+            "name": "owner/seen-2",
+            "description": "desc",
+            "stars": 122,
+            "forks": 44,
+            "language": "Python",
+            "url": "https://github.com/owner/seen-2",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+        {
+            "rank": 3,
+            "name": "owner/new-1",
+            "description": "desc",
+            "stars": 121,
+            "forks": 43,
+            "language": "Python",
+            "url": "https://github.com/owner/new-1",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+        {
+            "rank": 4,
+            "name": "owner/new-2",
+            "description": "desc",
+            "stars": 120,
+            "forks": 42,
+            "language": "Python",
+            "url": "https://github.com/owner/new-2",
+            "created_at": "2026-05-15T00:00:00Z",
+        },
+    ]
+
+    dedup = MagicMock()
+    dedup.get_stars.side_effect = lambda url, week: {"https://github.com/owner/seen-1": 100, "https://github.com/owner/seen-2": 99}.get(url, 0)
+    dedup.check_and_update.side_effect = ["skip", "skip", "new", "new"]
+    dedup.get_first_seen.side_effect = lambda url: "2026-05-15"
+    dedup.preview_action.side_effect = lambda url, stars, week: "skip" if url in {
+        "https://github.com/owner/seen-1",
+        "https://github.com/owner/seen-2",
+    } else "new"
+    dedup.has_seen.side_effect = lambda url: url in {
+        "https://github.com/owner/seen-1",
+        "https://github.com/owner/seen-2",
+    }
+    dedup.is_loaded_from_file.return_value = True
+    feishu = MagicMock()
+    feishu.get_or_create_table.return_value = "tbl123"
+
+    with patch("sys.argv", ["main.py", "--top", "2", "--min-new", "2", "--dry-run"]):
+        with patch("main.fetch_top_repos", side_effect=[first_batch, second_batch]) as mock_fetch:
+            with patch("main.DedupState", return_value=dedup):
+                with patch("main.FeishuClient", return_value=feishu):
+                    with patch("main.fetch_readme"):
+                        with patch("main.generate_repo_content"):
+                            with patch.object(main.console, "print") as mock_print:
+                                main.main()
+
+    assert mock_fetch.call_count == 2
+    rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+    assert "开始补足到 2 条" in rendered
+    assert "2 条" in rendered
