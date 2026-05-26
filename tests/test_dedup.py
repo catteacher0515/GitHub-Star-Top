@@ -37,7 +37,7 @@ def test_weekly_reset():
     state = DedupState()
     state.check_and_update("https://github.com/a/b", 1000, "2026-W13")
     result = state.check_and_update("https://github.com/a/b", 1000, "2026-W14")
-    assert result == "new"
+    assert result == "skip"
 
 
 def test_state_persists_to_file():
@@ -60,3 +60,25 @@ def test_first_seen_persists_across_weeks():
     # first_seen 应该是 W13 时记录的日期，不是 W14
     assert first_seen is not None
     assert len(first_seen) == 10  # YYYY-MM-DD 格式
+
+
+def test_repo_within_30_day_cooldown_is_skipped_across_weeks():
+    state = DedupState()
+    state.check_and_update("https://github.com/a/b", 1000, "2026-W13")
+    state.save()
+
+    state2 = DedupState()
+    result = state2.check_and_update("https://github.com/a/b", 1200, "2026-W16")
+
+    assert result == "skip"
+
+
+def test_repo_after_30_day_cooldown_can_reappear():
+    state = DedupState()
+    state.check_and_update("https://github.com/a/b", 1000, "2026-W13")
+    state.save()
+
+    state2 = DedupState()
+    result = state2.check_and_update("https://github.com/a/b", 1200, "2026-W18")
+
+    assert result == "new"
