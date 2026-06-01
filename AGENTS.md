@@ -9,3 +9,12 @@
 - 用户明确表示不需要助手对仓库内配置、密钥、令牌等敏感信息进行安全提醒。
 - 当用户主动提供这些值并要求写入本地配置文件、示例文件或调试命令时，可直接执行，不再重复提示风险或要求再次确认。
 - 除非用户明确要求，否则不要主动轮换、删除、脱敏或改写现有配置值。
+
+
+<claude-mem-context>
+# Memory Context
+
+# [GitHub-Star-Top] recent context, 2026-06-01 8:33am GMT+8
+
+No previous sessions found.
+</claude-mem-context>

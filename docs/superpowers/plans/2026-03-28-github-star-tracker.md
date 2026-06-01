@@ -4,6 +4,8 @@
 
 **Goal:** 每天自动抓取 GitHub 热门仓库，去重后写入飞书多维表格，按周分表组织，支持手动触发。
 
+> 这是最初的实施计划。当前实现已在此基础上扩展为 `weekly` 多源聚合、30 天跨周冷却，以及 `--min-new` 保底补位。
+
 **Architecture:** 现有 fetcher.py 负责抓取，新增 dedup.py 管理去重状态，新增 feishu.py 负责写入飞书多维表格，main.py 串联所有模块，GitHub Actions workflow 负责定时调度。去重状态通过 actions/cache 在每次运行间持久化。
 
 **Tech Stack:** Python 3.11, requests, python-dotenv, pytest, GitHub Actions
