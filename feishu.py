@@ -3,17 +3,16 @@ import requests
 from config import FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_BITABLE_APP_TOKEN, FEISHU_API_BASE
 
 STATUS_FIELD_OPTIONS = [
-    {"name": "未处理", "hue": "Gray", "lightness": "Lighter"},
-    {"name": "待加入选题池", "hue": "Orange", "lightness": "Light"},
-    {"name": "已加入", "hue": "Green", "lightness": "Light"},
-    {"name": "重复待确认", "hue": "Purple", "lightness": "Light"},
+    {"name": "未处理", "color": 0},
+    {"name": "待加入选题池", "color": 2},
+    {"name": "已加入", "color": 3},
+    {"name": "重复待确认", "color": 6},
 ]
 
 STATUS_FIELD_DEF = {
     "field_name": "入池状态",
     "type": 3,
     "property": {
-        "multiple": False,
         "options": STATUS_FIELD_OPTIONS,
     },
 }
@@ -23,7 +22,6 @@ def _pool_status_field_def():
         "field_name": STATUS_FIELD_DEF["field_name"],
         "type": STATUS_FIELD_DEF["type"],
         "property": {
-            "multiple": STATUS_FIELD_DEF["property"]["multiple"],
             "options": [dict(option) for option in STATUS_FIELD_DEF["property"]["options"]],
         },
     }

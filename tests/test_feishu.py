@@ -57,7 +57,9 @@ def test_get_or_create_table_creates_table_with_expected_fields(client):
     assert "选题池记录" in field_names
     status_field = next(field for field in payload["table"]["fields"] if field["field_name"] == "入池状态")
     assert status_field["type"] == 3
+    assert "multiple" not in status_field["property"]
     assert status_field["property"]["options"][0]["name"] == "未处理"
+    assert status_field["property"]["options"][0]["color"] == 0
     assert status_field["property"]["options"][1]["name"] == "待加入选题池"
     assert status_field["property"]["options"][2]["name"] == "已加入"
     assert status_field["property"]["options"][3]["name"] == "重复待确认"
@@ -84,6 +86,7 @@ def test_ensure_fields_adds_missing_pool_fields(client):
     status_payload = mock_post.call_args_list[1].kwargs["json"]
     assert status_payload["field_name"] == "入池状态"
     assert status_payload["type"] == 3
+    assert "multiple" not in status_payload["property"]
     assert status_payload["property"]["options"][0]["name"] == "未处理"
 
 

@@ -72,10 +72,11 @@ def main():
         if args.force_write:
             to_write.append(_prepare_repo(repo, "force_write"))
             continue
+        was_seen_before = dedup.has_seen(repo["url"])
         action = dedup.check_and_update(repo["url"], repo["stars"], week)
         if action == "skip":
             continue
-        if action == "new" and not dedup.has_seen(repo["url"]):
+        if action == "new" and not was_seen_before:
             to_write.append(_prepare_repo(repo, action))
             new_unseen_count += 1
         elif action == "update":
@@ -99,15 +100,16 @@ def main():
                     refill_repos = fetch_top_repos(top=refill_limit, period=args.period, lang=args.lang)
                     refill_excluded = []
             except RuntimeError as e:
-                console.print(f"[red]错误：{e}[/red]")
-                sys.exit(1)
+                console.print(f"[yellow]补位抓取失败：{e}[/yellow]")
+                break
 
             for repo in refill_repos:
                 if repo["url"] in seen_urls:
                     continue
                 seen_urls.add(repo["url"])
+                was_seen_before = dedup.has_seen(repo["url"])
                 action = dedup.preview_action(repo["url"], repo["stars"], week)
-                if action != "new" or dedup.has_seen(repo["url"]):
+                if action != "new" or was_seen_before:
                     continue
                 dedup.check_and_update(repo["url"], repo["stars"], week)
                 to_write.append(_prepare_repo(repo, action))

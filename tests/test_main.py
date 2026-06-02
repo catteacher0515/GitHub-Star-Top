@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import main
+from dedup import DedupState
 
 
 def test_force_write_bypasses_dedup_and_writes_records():
@@ -193,3 +194,60 @@ def test_min_new_target_fills_from_unseen_backlog():
     rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
     assert "开始补足到 2 条" in rendered
     assert "2 条" in rendered
+
+
+def test_first_new_repo_counts_toward_min_new_with_real_dedup(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    repo = {
+        "rank": 1,
+        "name": "owner/new-repo",
+        "description": "desc",
+        "stars": 123,
+        "forks": 45,
+        "language": "Python",
+        "url": "https://github.com/owner/new-repo",
+        "created_at": "2026-05-15T00:00:00Z",
+    }
+
+    dedup = DedupState()
+
+    with patch("sys.argv", ["main.py", "--top", "1", "--min-new", "1", "--dry-run"]):
+        with patch("main.fetch_top_repos", return_value=[repo]) as mock_fetch:
+            with patch("main.DedupState", return_value=dedup):
+                with patch.object(main.console, "print") as mock_print:
+                    main.main()
+
+    rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+    assert "开始补足到 1 条" not in rendered
+    assert "去重后待写入：1 条" in rendered
+    assert mock_fetch.call_count == 1
+
+
+def test_refill_fetch_failure_does_not_abort_run():
+    repo = {
+        "rank": 1,
+        "name": "owner/seen-repo",
+        "description": "desc",
+        "stars": 123,
+        "forks": 45,
+        "language": "Python",
+        "url": "https://github.com/owner/seen-repo",
+        "created_at": "2026-05-15T00:00:00Z",
+    }
+
+    dedup = MagicMock()
+    dedup.has_seen.return_value = True
+    dedup.check_and_update.return_value = "skip"
+    dedup.preview_action.return_value = "skip"
+
+    with patch("sys.argv", ["main.py", "--top", "1", "--min-new", "1", "--dry-run"]):
+        with patch("main.fetch_top_repos", side_effect=[[repo], RuntimeError("refill failed")]):
+            with patch("main.DedupState", return_value=dedup):
+                with patch.object(main.console, "print") as mock_print:
+                    main.main()
+
+    rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+    assert "补位抓取失败" in rendered
+    assert "refill failed" in rendered
+    assert "dry-run 模式" in rendered
