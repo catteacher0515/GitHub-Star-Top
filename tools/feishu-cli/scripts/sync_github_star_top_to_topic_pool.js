@@ -85,33 +85,44 @@ function getFieldMap(fields) {
   return new Map(fields.map((field) => [field.name, field]));
 }
 
-function listRecords(baseToken, tableId, fieldNames) {
-  const args = [
-    "base",
-    "+record-list",
-    "--base-token",
-    baseToken,
-    "--table-id",
-    tableId,
-    "--offset",
-    "0",
-    "--limit",
-    "200",
-  ];
+function listRecords(baseToken, tableId, fieldNames, runner = runLark) {
+  const limit = 200;
+  const records = [];
 
-  for (const fieldName of fieldNames) {
-    args.push("--field-id", fieldName);
+  for (let offset = 0; ; offset += limit) {
+    const args = [
+      "base",
+      "+record-list",
+      "--base-token",
+      baseToken,
+      "--table-id",
+      tableId,
+      "--offset",
+      String(offset),
+      "--limit",
+      String(limit),
+    ];
+
+    for (const fieldName of fieldNames) {
+      args.push("--field-id", fieldName);
+    }
+
+    const result = runner(args, { forceJsonFormat: true });
+    const rows = result.data.data || [];
+    const fields = result.data.fields || [];
+    const recordIds = result.data.record_id_list || [];
+
+    records.push(
+      ...rows.map((row, index) => ({
+        recordId: recordIds[index],
+        values: Object.fromEntries(fields.map((field, fieldIndex) => [field, row[fieldIndex]])),
+      }))
+    );
+
+    if (rows.length < limit) {
+      return records;
+    }
   }
-
-  const result = runLark(args, { forceJsonFormat: true });
-  const rows = result.data.data || [];
-  const fields = result.data.fields || [];
-  const recordIds = result.data.record_id_list || [];
-
-  return rows.map((row, index) => ({
-    recordId: recordIds[index],
-    values: Object.fromEntries(fields.map((field, fieldIndex) => [field, row[fieldIndex]])),
-  }));
 }
 
 function selectContains(optionValue, expected) {
@@ -239,6 +250,90 @@ function getTargetRecordUrl(recordId) {
   return `https://my.feishu.cn/base/${CONFIG.target.baseToken}?table=${CONFIG.target.tableId}&recordId=${recordId}`;
 }
 
+function syncPendingRecords(config, pending, targetRecords, deps, options = {}) {
+  const targetByName = new Map();
+  const targetByUrl = new Map();
+
+  for (const target of targetRecords) {
+    const topic = normalizeText(target.values[config.target.fieldNames.topic]);
+    const url = normalizeUrl(target.values[config.target.fieldNames.link]);
+    if (topic) targetByName.set(topic, target);
+    if (url) targetByUrl.set(url, target);
+  }
+
+  const summary = {
+    dryRun: Boolean(options.dryRun),
+    processed: pending.length,
+    created: [],
+    duplicates: [],
+  };
+
+  for (const source of pending) {
+    const repoName = normalizeText(source.values[config.source.fieldNames.repoName]);
+    const repoUrl = normalizeUrl(source.values[config.source.fieldNames.repoUrl]);
+    const repoNotes = normalizeText(source.values[config.source.fieldNames.repoNotes]);
+    const repoDraft = normalizeText(source.values[config.source.fieldNames.draft]);
+
+    const duplicate =
+      (repoName && targetByName.get(repoName)) ||
+      (repoUrl && targetByUrl.get(repoUrl));
+
+    if (duplicate) {
+      deps.updateSourceRecord(source.tableId, source.recordId, {
+        [config.source.fieldNames.syncStatus]: config.source.status.duplicate,
+      });
+      summary.duplicates.push({
+        sourceRecordId: source.recordId,
+        sourceTableName: source.tableName,
+        repoName,
+        repoUrl,
+        existing: {
+          topic: duplicate.values[config.target.fieldNames.topic],
+          link: duplicate.values[config.target.fieldNames.link],
+          publishProgress: duplicate.values[config.target.fieldNames.publishProgress],
+          topicStatus: duplicate.values[config.target.fieldNames.topicStatus],
+          priority: duplicate.values[config.target.fieldNames.priority],
+        },
+      });
+      continue;
+    }
+
+    const payload = buildTargetPayload(
+      {
+        repoName,
+        repoUrl,
+        repoNotes,
+        repoDraft,
+      },
+      deps.formatNow()
+    );
+    const createdRecordId = deps.createTargetRecord(payload);
+
+    const targetRecordUrl = deps.getTargetRecordUrl(createdRecordId);
+    deps.updateSourceRecord(source.tableId, source.recordId, {
+      [config.source.fieldNames.syncStatus]: config.source.status.added,
+      [config.source.fieldNames.targetRecordUrl]: targetRecordUrl,
+    });
+
+    const createdTarget = {
+      recordId: createdRecordId,
+      values: payload,
+    };
+    if (repoName) targetByName.set(repoName, createdTarget);
+    if (repoUrl) targetByUrl.set(repoUrl, createdTarget);
+
+    summary.created.push({
+      sourceRecordId: source.recordId,
+      sourceTableName: source.tableName,
+      targetRecordId: createdRecordId,
+      repoName,
+      targetRecordUrl,
+    });
+  }
+
+  return summary;
+}
+
 function main() {
   const sourceTables = listSourceTables(CONFIG.source.baseToken);
   const pending = collectPendingSourceRecords(CONFIG, sourceTables, {
@@ -252,79 +347,18 @@ function main() {
   ensureRequiredFields(targetFields, requiredTarget, "Target table");
 
   const targetRecords = listRecords(CONFIG.target.baseToken, CONFIG.target.tableId, requiredTarget);
-  const targetByName = new Map();
-  const targetByUrl = new Map();
-
-  for (const target of targetRecords) {
-    const topic = normalizeText(target.values[CONFIG.target.fieldNames.topic]);
-    const url = normalizeUrl(target.values[CONFIG.target.fieldNames.link]);
-    if (topic) targetByName.set(topic, target);
-    if (url) targetByUrl.set(url, target);
-  }
-
-  const summary = {
-    dryRun: DRY_RUN,
-    processed: pending.length,
-    created: [],
-    duplicates: [],
-  };
-
-  for (const source of pending) {
-    const repoName = normalizeText(source.values[CONFIG.source.fieldNames.repoName]);
-    const repoUrl = normalizeUrl(source.values[CONFIG.source.fieldNames.repoUrl]);
-    const repoNotes = normalizeText(source.values[CONFIG.source.fieldNames.repoNotes]);
-    const repoDraft = normalizeText(source.values[CONFIG.source.fieldNames.draft]);
-
-    const duplicate =
-      (repoName && targetByName.get(repoName)) ||
-      (repoUrl && targetByUrl.get(repoUrl));
-
-    if (duplicate) {
-      updateSourceRecord(source.tableId, source.recordId, {
-        [CONFIG.source.fieldNames.syncStatus]: CONFIG.source.status.duplicate,
-      });
-      summary.duplicates.push({
-        sourceRecordId: source.recordId,
-        sourceTableName: source.tableName,
-        repoName,
-        repoUrl,
-        existing: {
-          topic: duplicate.values[CONFIG.target.fieldNames.topic],
-          link: duplicate.values[CONFIG.target.fieldNames.link],
-          publishProgress: duplicate.values[CONFIG.target.fieldNames.publishProgress],
-          topicStatus: duplicate.values[CONFIG.target.fieldNames.topicStatus],
-          priority: duplicate.values[CONFIG.target.fieldNames.priority],
-        },
-      });
-      continue;
-    }
-
-    const createdRecordId = createTargetRecord(
-      buildTargetPayload(
-        {
-          repoName,
-          repoUrl,
-          repoNotes,
-          repoDraft,
-        },
-        formatNow()
-      )
-    );
-
-    const targetRecordUrl = getTargetRecordUrl(createdRecordId);
-    updateSourceRecord(source.tableId, source.recordId, {
-      [CONFIG.source.fieldNames.syncStatus]: CONFIG.source.status.added,
-      [CONFIG.source.fieldNames.targetRecordUrl]: targetRecordUrl,
-    });
-
-    summary.created.push({
-      sourceRecordId: source.recordId,
-      sourceTableName: source.tableName,
-      targetRecordId: createdRecordId,
-      repoName,
-      targetRecordUrl,
-    });
-  }
+  const summary = syncPendingRecords(
+    CONFIG,
+    pending,
+    targetRecords,
+    {
+      createTargetRecord,
+      updateSourceRecord,
+      getTargetRecordUrl,
+      formatNow,
+    },
+    { dryRun: DRY_RUN }
+  );
 
   console.log(JSON.stringify(summary, null, 2));
   return summary;
@@ -341,6 +375,7 @@ module.exports = {
   normalizeText,
   normalizeUrl,
   runLark,
+  syncPendingRecords,
 };
 
 if (require.main === module) {
