@@ -18,6 +18,8 @@ def test_force_write_bypasses_dedup_and_writes_records():
 
     dedup = MagicMock()
     dedup.get_first_seen.return_value = "2026-05-15"
+    dedup.check_and_update.return_value = "new"
+    dedup.has_seen.return_value = False
     feishu = MagicMock()
     feishu.get_or_create_table.return_value = "tbl123"
 
@@ -69,6 +71,44 @@ def test_update_flow_preserves_existing_pool_status():
     feishu.find_record_id.assert_called_once_with("tbl123", "https://github.com/owner/repo")
     fields = feishu.upsert_record.call_args.args[1]
     assert "入池状态" not in fields
+
+
+def test_main_aborts_before_writing_when_llm_generation_fails():
+    repo = {
+        "rank": 1,
+        "name": "owner/repo",
+        "description": "desc",
+        "stars": 123,
+        "forks": 45,
+        "language": "Python",
+        "url": "https://github.com/owner/repo",
+        "created_at": "2026-05-15T00:00:00Z",
+    }
+
+    dedup = MagicMock()
+    dedup.get_first_seen.return_value = "2026-05-15"
+    dedup.check_and_update.return_value = "new"
+    dedup.has_seen.return_value = False
+    feishu = MagicMock()
+    feishu.get_or_create_table.return_value = "tbl123"
+
+    with patch("sys.argv", ["main.py", "--top", "1"]):
+        with patch("main.fetch_top_repos", return_value=[repo]):
+            with patch("main.DedupState", return_value=dedup):
+                with patch("main.FeishuClient", return_value=feishu):
+                    with patch("main.fetch_readme", return_value="# README"):
+                        with patch("main.generate_repo_content", side_effect=RuntimeError("LLM 生成失败")):
+                            with patch("sys.exit", side_effect=SystemExit) as mock_exit:
+                                with patch.object(main.console, "print") as mock_print:
+                                    try:
+                                        main.main()
+                                    except SystemExit:
+                                        pass
+
+    feishu.upsert_record.assert_not_called()
+    mock_exit.assert_called_once_with(1)
+    rendered = "\n".join(str(call.args[0]) for call in mock_print.call_args_list if call.args)
+    assert "LLM 生成失败" in rendered
 
 
 def test_debug_filter_prints_excluded_reasons():

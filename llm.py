@@ -156,9 +156,14 @@ def _call_api(prompt: str) -> dict:
 
 
 def _parse(text: str) -> dict:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace("### 仓库解读", "【仓库解读】")
+    normalized = normalized.replace("### 快速上手", "【快速上手】")
+    normalized = normalized.replace("### 推荐初稿", "【推荐初稿】")
+
     intro, guide, draft = "", "", ""
-    if "【仓库解读】" in text and "【快速上手】" in text:
-        remainder = text.replace("【仓库解读】", "", 1)
+    if "【仓库解读】" in normalized and "【快速上手】" in normalized:
+        remainder = normalized.replace("【仓库解读】", "", 1)
         intro_part, remainder = remainder.split("【快速上手】", 1)
         if "【推荐初稿】" in remainder:
             guide_part, draft_part = remainder.split("【推荐初稿】", 1)
@@ -168,12 +173,12 @@ def _parse(text: str) -> dict:
         intro = format_for_feishu_cell(intro_part.strip())
         guide = format_for_feishu_cell(guide_part.strip())
     else:
-        intro = format_for_feishu_cell(text.strip())
+        intro = format_for_feishu_cell(normalized.strip())
     return {"仓库解读": intro, "快速上手": guide, "推荐初稿": draft}
 
 
 def generate_repo_content(name: str, description: str, language: str, readme: str, stars: int, forks: int, created_at: str) -> dict:
-    """生成仓库解读和快速上手内容，失败重试一次，还是失败返回空字段"""
+    """生成仓库解读和快速上手内容，失败重试一次，还是失败抛错"""
     readme_summary = readme[:1500] if readme else description
     prompt = PROMPT_TEMPLATE.format(
         name=name,
@@ -190,5 +195,5 @@ def generate_repo_content(name: str, description: str, language: str, readme: st
         except Exception as e:
             print(f"[llm] 第 {attempt + 1} 次调用失败: {e}")
             if attempt == 1:
-                return {"仓库解读": "", "快速上手": "", "推荐初稿": ""}
-    return {"仓库解读": "", "快速上手": "", "推荐初稿": ""}
+                raise RuntimeError(f"LLM 生成失败: {e}") from e
+    raise RuntimeError("LLM 生成失败: 未知错误")

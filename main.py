@@ -137,15 +137,19 @@ def main():
         today = datetime.utcnow().strftime("%Y-%m-%d")
         for repo in to_write:
             readme = fetch_readme(repo["name"])
-            llm_content = generate_repo_content(
-                name=repo["name"],
-                description=repo["description"],
-                language=repo["language"],
-                readme=readme,
-                stars=repo["stars"],
-                forks=repo["forks"],
-                created_at=repo["created_at"][:10],
-            )
+            try:
+                llm_content = generate_repo_content(
+                    name=repo["name"],
+                    description=repo["description"],
+                    language=repo["language"],
+                    readme=readme,
+                    stars=repo["stars"],
+                    forks=repo["forks"],
+                    created_at=repo["created_at"][:10],
+                )
+            except RuntimeError as e:
+                console.print(f"[red]错误：{repo['name']} 内容生成失败：{e}[/red]")
+                sys.exit(1)
             fields = {
                 "仓库名": repo["name"],
                 "描述": repo["description"],

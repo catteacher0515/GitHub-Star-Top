@@ -66,20 +66,20 @@ def test_generate_retries_on_failure():
     assert "仓库解读" in result
 
 
-def test_generate_returns_empty_on_double_failure():
+def test_generate_raises_on_double_failure():
     mock_fail = MagicMock()
     mock_fail.raise_for_status.side_effect = Exception("500")
     with patch("llm.requests.post", side_effect=[mock_fail, mock_fail]):
-        result = generate_repo_content(
-            name="owner/repo",
-            description="A tool",
-            language="Python",
-            readme="",
-            stars=1200,
-            forks=300,
-            created_at="2026-05-15",
-        )
-    assert result == {"仓库解读": "", "快速上手": "", "推荐初稿": ""}
+        with pytest.raises(RuntimeError, match="LLM 生成失败"):
+            generate_repo_content(
+                name="owner/repo",
+                description="A tool",
+                language="Python",
+                readme="",
+                stars=1200,
+                forks=300,
+                created_at="2026-05-15",
+            )
 
 
 def test_generate_formats_quick_start_for_feishu_readability():
@@ -165,3 +165,50 @@ Star / Fork / 日期：
 
 优点标签：
 适合小白、效率提升、值得收藏"""
+
+
+def test_generate_parses_markdown_style_section_headings():
+    mock_content = """### 仓库解读
+
+这是一个很棒的工具。
+
+### 快速上手
+
+① 核心功能
+- 支持批量处理
+
+② 上手步骤
+1. 安装依赖
+
+### 推荐初稿
+
+项目名：owner/repo
+
+中文定位：一个很好用的工具
+
+它解决的问题：
+帮你省时间。
+
+你为什么这周选它：
+因为适合新手先看一眼。
+
+Star / Fork / 日期：
+1.2k / 300 / 2026-05-15
+
+优点标签：
+适合小白、效率提升
+"""
+    with patch("llm.requests.post", return_value=_mock_resp(mock_content)):
+        result = generate_repo_content(
+            name="owner/repo",
+            description="A cool tool",
+            language="Python",
+            readme="# Hello\nThis is a tool.",
+            stars=1200,
+            forks=300,
+            created_at="2026-05-15",
+        )
+
+    assert result["仓库解读"] == "这是一个很棒的工具。"
+    assert result["快速上手"] == "① 核心功能\n- 支持批量处理\n\n② 上手步骤\n1. 安装依赖"
+    assert "项目名：owner/repo" in result["推荐初稿"]
