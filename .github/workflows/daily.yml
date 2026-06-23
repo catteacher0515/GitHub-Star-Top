@@ -28,6 +28,11 @@ jobs:
           restore-keys: |
             dedup-state-
 
+      - name: Check DeepSeek availability
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python deepseek_healthcheck.py
+
       - name: Run tracker
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
