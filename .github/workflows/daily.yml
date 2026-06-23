@@ -21,7 +21,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore dedup state cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: dedup_state.json
           key: dedup-state-${{ github.run_number }}
@@ -43,7 +43,7 @@ jobs:
         run: python main.py --top 30 --period weekly
 
       - name: Save dedup state cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: dedup_state.json
           key: dedup-state-${{ github.run_number }}
